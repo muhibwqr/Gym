@@ -98,10 +98,22 @@ class TestDatasetInit:
         validate_line, eval_line = (
             line for line in out.splitlines() if "gym dataset validate" in line or "gym eval run" in line
         )
-        assert shlex.split(validate_line.split("  #", 1)[0]) == ["Next:", "gym", "dataset", "validate", str(folder)]
-        assert shlex.split(eval_line)[:5] == ["gym", "eval", "run", str(folder), "--agent"]
+        assert shlex.split(validate_line.split("  #", 1)[0]) == [
+            "Next:",
+            "gym",
+            "dataset",
+            "validate",
+            str(folder),
+            "--sandbox",
+            "<provider>",
+        ]
+        eval_args = shlex.split(eval_line)
+        assert eval_args[:5] == ["gym", "eval", "run", str(folder), "--agent"]
+        # A task target needs a sandbox, and the run needs the model's key: both must be in the pasted command.
+        assert eval_args[eval_args.index("--sandbox") + 1] == "<provider>"
+        assert eval_args[eval_args.index("--model-api-key") + 1] == "<key>"
         if root == "plain":
-            assert f"Next: gym dataset validate {folder}  #" in out  # no quotes on a path that needs none
+            assert f"Next: gym dataset validate {folder} --sandbox" in out  # no quotes on a path that needs none
         else:
             assert f"'{folder}'" in validate_line and f"'{folder}'" in eval_line
 
