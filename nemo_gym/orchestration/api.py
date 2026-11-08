@@ -390,6 +390,9 @@ class SlurmComputeConfig(BaseComputeConfig):
 
     walltime: str | None = None
     node_pools: dict[str, NodePool] = {}
+    # Emit #SBATCH --gpus-per-node from the pools' gpus_per_node. Clusters without GPU GRES reject that
+    # directive, so false drops it while gpus_per_node still sizes vLLM deployments and the Ray Serve gateway.
+    request_gpus: bool = True
     extra_args: dict[str, str] = {}  # Job-level #SBATCH directives (e.g. --comment, --mail-user).
 
 

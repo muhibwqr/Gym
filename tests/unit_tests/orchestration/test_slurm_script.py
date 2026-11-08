@@ -29,6 +29,7 @@ import warnings
 from pathlib import Path
 
 import pytest
+import yaml
 from hydra.core.override_parser.overrides_parser import OverridesParser
 from omegaconf import OmegaConf
 
@@ -113,6 +114,13 @@ def test_render_pool_directives_gpus(pool):
     pool.gpus_per_node = 4
     lines = _render_pool_directives({"main": pool})
     assert "#SBATCH --gpus-per-node=4" in lines
+
+
+def test_render_pool_directives_can_leave_out_gpus_for_clusters_without_gres(pool):
+    pool.gpus_per_node = 8
+    lines = _render_pool_directives({"main": pool}, request_gpus=False)
+    assert not any(line.startswith("#SBATCH --gpus-per-node") for line in lines)
+    assert "#SBATCH --nodes=1" in lines
 
 
 def test_render_pool_directives_extra_args(pool):
@@ -1082,6 +1090,19 @@ def test_build_sbatch_script_resumable_adds_prologue_and_resume_flag(bench_dir):
     assert "+resume_from_cache=True" in script
     # Right after the driver step, which it reads the status of, the job ends its own chain when the run is complete.
     assert "\n_gym_run_driver\n" + render_resume_epilogue() + "\n" in script
+
+
+@pytest.mark.parametrize("request_gpus", [True, False])
+def test_shipped_multi_node_example_without_gres_keeps_sizing_the_gateway(bench_dir, request_gpus):
+    # A cluster without GPU GRES rejects #SBATCH --gpus-per-node, but the Ray Serve gateway is still chosen and
+    # sized from gpus_per_node, so request_gpus: false drops only the directive.
+    raw = yaml.safe_load(Path("examples/slurm_vllm_ray_multi_instance_multi_node.yaml").read_text())
+    raw["compute"]["cluster"]["request_gpus"] = request_gpus
+    config = SubmitConfig.model_validate(raw)
+    compute = next(iter(config.compute.values()))
+    script = build_sbatch_script(config, "gpqa", config.driver.benchmarks["gpqa"], compute, bench_dir)
+    assert ("#SBATCH --gpus-per-node=8" in script) is request_gpus
+    assert "--gpus-per-node 8" in script
 
 
 def test_build_sbatch_script_not_resumable_omits_prologue(submit_config, bench_dir):

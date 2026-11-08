@@ -105,7 +105,7 @@ def _render_directives(compute: SlurmComputeConfig, remote_bench_dir: Path, benc
     lines.append(f"#SBATCH --chdir={remote_bench_dir}")
     for key, val in compute.extra_args.items():
         lines.append(f"#SBATCH --{key}={val}")
-    lines.extend(_render_pool_directives(compute.node_pools))
+    lines.extend(_render_pool_directives(compute.node_pools, request_gpus=compute.request_gpus))
     return "\n".join(lines)
 
 
@@ -126,13 +126,16 @@ def _pool_directive(pools: dict[str, NodePool], attribute: str) -> Any:
     return next(iter(values))
 
 
-def _render_pool_directives(pools: dict[str, NodePool]) -> list[str]:
+def _render_pool_directives(pools: dict[str, NodePool], *, request_gpus: bool = True) -> list[str]:
     """One set of directives for the whole allocation, not one per pool.
 
     Pools divide an allocation between services (see _pool_offsets); they are not
     separate Slurm requests. Emitting --nodes per pool made every pool but the last
     a no-op, so a two-pool job asked for one pool's nodes while the rest of the
     executor sized itself on the sum.
+
+    With ``request_gpus`` false, --gpus-per-node is left out (clusters without GPU
+    GRES reject it); the pools must still agree on gpus_per_node, which sizes services.
     """
     if not pools:
         return []
@@ -142,7 +145,7 @@ def _render_pool_directives(pools: dict[str, NodePool]) -> list[str]:
         f"#SBATCH --ntasks-per-node={_pool_directive(pools, 'ntasks_per_node')}",
     ]
     gpus_per_node = _pool_directive(pools, "gpus_per_node")
-    if gpus_per_node is not None:
+    if gpus_per_node is not None and request_gpus:
         lines.append(f"#SBATCH --gpus-per-node={gpus_per_node}")
     extra_args: dict[str, str] = {}
     for name, pool in pools.items():
